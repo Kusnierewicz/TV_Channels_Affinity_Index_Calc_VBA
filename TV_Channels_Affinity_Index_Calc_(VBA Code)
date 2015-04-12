@@ -1,0 +1,703 @@
+Sub aAWyliczanieIndeksow_3_3()
+
+Dim TablicaDanych As Variant  ' tablica
+Dim TablicaDanychWybranych As Variant ' tablica
+Dim TablicaIndeksów As Variant  ' tablica
+Dim TablicaKanałów As Variant  ' tablica
+Dim TablicaPakietów As Variant  ' tablica
+Dim TablicaFinał As Variant  ' tablica
+Dim TablicaBrakująceStacje As Variant ' tablica
+Dim TablicaBrakująceStacje2 As Variant ' tablica
+Dim TablicaSumGRPs As Variant ' tablica
+Dim WybrakowanePakiety As Variant ' tablica
+Dim PakietyDoSkanowania As Variant ' tablica
+Dim PakietDoWyliczeń As Variant ' tablica
+Dim ZeskanowanePakiety As Variant ' tablica
+Dim IleKanałówWStacji() As Variant ' tablica które przechowuje ilosc wierszy w kolumnach w zakładce KANAŁY
+Dim a, b, e, f, c, g As Long
+Dim IleKolumnDanych, IleWierszyDanych, kolumnaWklejana, IlePakietów, IleStacjiWPakiecie, liczbaTargetów, z, Pozycja1649, Pozycja1659 As Integer 'kolumnaWklejana zmienna pilnująca aby wklejanie danych nie rozpoczęło się od 1
+Dim TG, BT, AffInd As Double '
+Dim Miejsce1, Miejsce2, Miejsce3, Miejsce4, Miejsce5, Miejsce6, Miejsce7, Miejsce8, Miejsce9, Miejsce10 As Range
+Dim NazwaPakietu As String
+Dim procent As Variant
+Dim fso As Object
+Dim oFile As Object
+Dim User As String
+Dim StartMakraCzytelny As String
+Dim StartMakraNieCzytelny As String
+Dim LogName As String
+Dim KomórkaStartowa As Range
+Dim ZmienioneKomórki As Range
+Dim pathLocal As String
+Dim pathWeb As String
+Dim bazaPath As String
+Dim ZmienioneKomórkiZlicz As Integer
+
+
+'------Dane o użytkowniku ---------------------
+
+User = Environ("UserName")
+StartMakraCzytelny = Format(Now, "yy-mm-dd  hh:mm:ss")
+StartMakraNieCzytelny = Format(Now, "yymmddhhmmss")
+
+'------Event logs recorder ---------------------
+'On Error GoTo WriteLog
+    
+    
+    pathWeb = "P:\Admin\Łukasz\robo\event log"
+    If FileFolderExists(pathWeb) Then
+    
+        LogName = pathWeb & Application.PathSeparator & User & " " & StartMakraNieCzytelny & ".txt"
+        Set fso = CreateObject("Scripting.FileSystemObject")
+        Set oFile = fso.CreateTextFile(LogName)
+        oFile.WriteLine "Makro 3.0 uruchomione - " & StartMakraCzytelny
+    
+'    ElseIf FileFolderExists(pathLocal) Then
+'
+'        LogName = pathLocal & Application.PathSeparator & User & " " & StartMakraNieCzytelny & ".txt"
+'        Set fso = CreateObject("Scripting.FileSystemObject")
+'        Set oFile = fso.CreateTextFile(LogName)
+'        oFile.WriteLine "Makro 3.0 uruchomione - " & StartMakraCzytelny
+'
+    Else
+    
+        pathLocal = "C:\test" & StartMakraNieCzytelny
+        MkDir pathLocal
+        LogName = pathLocal & Application.PathSeparator & User & " " & StartMakraNieCzytelny & ".txt"
+        Set fso = CreateObject("Scripting.FileSystemObject")
+        Set oFile = fso.CreateTextFile(LogName)
+        oFile.WriteLine "Makro 3.0 uruchomione - " & StartMakraCzytelny
+        MsgBox ("Nie masz połączenia z dyskiem sieciowym 'P' - nie będziesz mógł zaciągnąć listy pakietów. Skorzystaj z własnej listy pakietów")
+        
+'    Else
+'        MsgBox ("Poinformuj Łukasza, że pierwsza sekcja kodu nie zadziałała. Nie ma to najmniejszego wpływu na działanie makra, możesz spokojnie kontynuować :)")
+    End If
+    
+'------Tworzenie odpowiedniego pliku ---------------------
+oFile.WriteLine "Tworzenie odpowiedniego pliku"
+
+PozycjaStartowa = MsgBox("Czy zaznaczona komórka to nazwa pierwsze stacji z bazy danych?", vbYesNo)
+
+If PozycjaStartowa = vbYes Then
+  'MsgBox "No to działamy"
+  ActiveCell.EntireRow.Insert
+  ActiveCell.Offset(1, 0).Activate
+  Set KomórkaStartowa = ActiveCell
+  
+Else
+  MsgBox "W takim razie zaznacz tą odpowiednią :)"
+  Exit Sub
+End If
+
+Application.DisplayAlerts = False
+Dim ws As Worksheet
+For Each ws In Worksheets
+   If Left(ws.Name, 5) = "WYNIK" Or Left(ws.Name, 11) = "SPRAWDZANIE" Or Left(ws.Name, 21) = "PAKIETYDOUZUPEŁNIENIA" Then ws.Delete
+Next
+Application.DisplayAlerts = True
+
+ActiveSheet.Name = "DANE"
+
+'------Obróbka bazy danych ---------------------
+oFile.WriteLine "Obróbka bazy danych"
+
+ActiveCell.Offset((KomórkaStartowa.CurrentRegion.Rows.Count - 1), KomórkaStartowa.CurrentRegion.Columns.Count).Name = "koniecTabeli"
+
+'ZMIANA
+ZmienioneKomórkiZlicz = 0
+    For Each cell In KomórkaStartowa.CurrentRegion
+        If IsEmpty(cell) Then
+            'MsgBox "W komórce " & cell.Address & " nie ma adnej wartości - zmieniam tę wartość na 1. Jeżeli ma to negatywny wpływ na wyliczenie, popraw tę wartość po zakończeniu makra i uruchom je ponownie."
+            'oFile.WriteLine "puste komórki"
+            
+            'ZMIANA
+            ZmienioneKomórkiZlicz = ZmienioneKomórkiZlicz + 1
+            cell.Value = 1
+            If Not ZmienioneKomórki Is Nothing Then
+                ' Add the 2nd, 3rd, 4th etc cell to our new range, ZmienioneKomórki
+                ' this is the most common outcome so place it first in the IF test (faster coding)
+                Set ZmienioneKomórki = Union(ZmienioneKomórki, cell)
+            Else
+                ' the first valid cell becomes ZmienioneKomórki
+                Set ZmienioneKomórki = cell
+            End If
+        End If
+        If cell.Value = 0 Then
+            'MsgBox "W komórce " & cell.Address & " znajduje się zero - zmieniam to na 0.1. Jeżeli ma to negatywny wpływ na wyliczenie, popraw tę wartość po zakończeniu makra i uruchom je ponownie."
+            'oFile.WriteLine "puste komórki"
+            
+            'ZMIANA
+            ZmienioneKomórkiZlicz = ZmienioneKomórkiZlicz + 1
+            cell.Value = 0.1
+            If Not ZmienioneKomórki Is Nothing Then
+                ' Add the 2nd, 3rd, 4th etc cell to our new range, ZmienioneKomórki
+                ' this is the most common outcome so place it first in the IF test (faster coding)
+                Set ZmienioneKomórki = Union(ZmienioneKomórki, cell)
+            Else
+                ' the first valid cell becomes ZmienioneKomórki
+                Set ZmienioneKomórki = cell
+            End If
+        End If
+    Next
+    
+    If Not ZmienioneKomórki Is Nothing Then
+        With ZmienioneKomórki.Interior
+            .Pattern = xlSolid
+            .PatternColor = xlAutomatic
+            .Color = RGB(48, 84, 150)
+            .TintAndShade = 0
+            .PatternTintAndShade = 0
+        End With
+    End If
+    
+'ZMIANA
+If ZmienioneKomórkiZlicz <> 0 Then
+MsgBox "Zmieniono wartości w " & ZmienioneKomórkiZlicz & " komórkach."
+End If
+
+Worksheets.ADD(After:=Worksheets(Worksheets.Count)).Name = "WYNIK"
+Worksheets.ADD(After:=Worksheets(Worksheets.Count)).Name = "WYNIK2"
+Worksheets.ADD(After:=Worksheets(Worksheets.Count)).Name = "WYNIK3"
+Worksheets.ADD(After:=Worksheets(Worksheets.Count)).Name = "SPRAWDZANIE"
+
+Sheets("SPRAWDZANIE").Names.ADD Name:="BrakująceStacje", RefersToR1C1:="=R2C2"
+Sheets("SPRAWDZANIE").Names.ADD Name:="IleStacjiWPakiecie", RefersToR1C1:="=R3C6"
+Sheets("SPRAWDZANIE").Names.ADD Name:="iLESTACJIWPAKIECIEN", RefersToR1C1:="=R2C6"
+Sheets("SPRAWDZANIE").Names.ADD Name:="PakietyDoSkanowania", RefersToR1C1:="=R3C8"
+Sheets("SPRAWDZANIE").Names.ADD Name:="PakietyDoSkanowania2", RefersToR1C1:="=R4C8"
+Sheets("SPRAWDZANIE").Names.ADD Name:="PakietyDoSkanowaniaN", RefersToR1C1:="=R2C8"
+Sheets("SPRAWDZANIE").Names.ADD Name:="WybrakowanePakiety", RefersToR1C1:="=R2C4"
+Sheets("SPRAWDZANIE").Names.ADD Name:="TestKon", RefersToR1C1:="=R3C2"
+Sheets("SPRAWDZANIE").Names.ADD Name:="TestKon2", RefersToR1C1:="=R3C4"
+
+Worksheets.ADD(After:=Worksheets(Worksheets.Count)).Name = "PAKIETYDOUZUPEŁNIENIA"
+
+
+
+'------MsgBox ("START  - skan danych")---------------------
+
+oFile.WriteLine "start skanowania danych wprowadzonych przez usera + skan kanałów i pakietów"
+
+
+
+TablicaDanych = Worksheets("DANE").Range(KomórkaStartowa, "koniecTabeli") ' skanowanie danych
+
+
+'------MsgBox ("Część  - którą bazę wybierasz?")---------------------------
+oFile.WriteLine "Wybieramy bazę dnych"
+
+Dim wb1 As Workbook
+Dim wbBaza As Workbook
+Set wb1 = ActiveWorkbook
+
+    '1.Standardowe przypisanie
+    StandardCzyNie = InputBox(Prompt:="Którą bazę danych wybieramy. 1 - baza lokalna znajdująca się w tym folderze, 2 - baza na sieci w folderze Łukasza.", Title:="Która baza danych")
+    
+    If StandardCzyNie = 1 Then
+        oFile.WriteLine "Wybieramy lokalną bazę danych"
+        nazwaPliku = InputBox(Prompt:="Plik zewBazaKanalPakiet2014.xlsx nie istnieje w wybranej lokalizacji, jeżeli wybrales/as lokalną bazę, podaj poprawną nazwę, jeżeli wybrałeś sieciową lokalizację, masz problem z internetem albo plik ma inną nazwę. Podaj nazwę pliku lokalnego z bazą, z rozszrzeniem (np. baza.xlsx):", Title:="nazwa pliku z bazą danych ")
+        MsgBox wb1.Path
+        bazaPath = wb1.Path & Application.PathSeparator & nazwaPliku
+        
+    ElseIf StandardCzyNie = 2 Then
+        oFile.WriteLine "Wybieramy sieciową bazę danych"
+        bazaPath = "P:\Admin\Łukasz\robo\zewBazaKanalPakiet2014.xlsx"
+    
+    End If
+
+'------MsgBox ("START  - skan danych z pliku zewnętrznego!!")---------------------
+
+'bazaPath = ThisWorkbook.Path & "\zewBazaKanalPakiet2014.xlsx"
+'bazaPath = "P:\Admin\Łukasz\robo\zewBazaKanalPakiet2014.xlsx"
+
+    If FileFolderExists(bazaPath) Then
+        Set src = Workbooks.Open(Filename:=bazaPath)
+    ElseIf Not FileFolderExists(bazaPath) Then
+        MsgBox "nazwa pliku lokalnego jest błędna albo nie masz połączenia z siecią."
+        bazaPath = "P:\Admin\Łukasz\robo\zewBazaKanalPakiet2014.xlsx"
+        Set src = Workbooks.Open(Filename:=bazaPath)
+    End If
+
+'po otwarciu bazy wroc do glownego arkusza
+TablicaKanałów = Worksheets("KANAŁY").Range("A1", "End_Channels2") ' skanowanie tablicy Kanałów per broker
+TablicaPakietów = Worksheets("PAKIETY").Range("a1", "End_Channels") ' skanowanie tablicy Kanałów per Pakiet
+
+Set wbBaza = ActiveWorkbook
+
+wb1.Activate
+
+
+'------MsgBox ("ERROR HANDLING - sprawdzanie czy dane nie zawierają błędu")---------------------
+
+
+
+
+
+
+'------MsgBox ("Część  - sprawdzanie wporwadzonych stacji vs stacje wpisane do listy aktywnych stacji - Czy są stacje aktywne których nie ma w raporcie")---------------------
+oFile.WriteLine "Część  - sprawdzanie wporwadzonych stacji vs stacje wpisane do listy aktywnych stacji - Czy są stacje aktywne których nie ma w raporcie"
+
+    ReDim IleKanałówWStacji(1 To UBound(TablicaKanałów, 2)) ' Resizowanie tablicy do zbierania ilosc wierszy w kolumnach listy kanałów
+
+    For i = 1 To UBound(TablicaKanałów, 2) ' petla okresla ilosc wierszy w kolumnach listach kanałów
+        IleKanałówWStacji(i) = wbBaza.Worksheets("KANAŁY").Cells(61, i).End(xlUp).Row '!!!!WAŻNE - zautomatyzować!! Tablica określa ostatni wiersz skacząc od wiersza 51 do góry
+        IleAktywnychKanałów = IleAktywnychKanałów + (IleKanałówWStacji(i) - 1)
+
+    Next i
+
+    ReDim TablicaBrakująceStacje(1 To IleAktywnychKanałów, 1 To 2)
+    ReDim TablicaBrakująceStacje2(1 To IleAktywnychKanałów)
+
+    a = 1
+    For b = 1 To UBound(TablicaKanałów, 2) ' tablica
+        For c = 2 To IleKanałówWStacji(b) ' tablica
+            TablicaBrakująceStacje(a, 1) = TablicaKanałów(c, b)
+            a = a + 1
+        Next c
+
+    Next b
+
+    For a = 1 To IleAktywnychKanałów ' tablica
+        For b = 1 To UBound(TablicaDanych, 1) ' tablica
+           If CStr(TablicaDanych(b, 1)) = CStr(TablicaBrakująceStacje(a, 1)) Then ' tablica
+               TablicaBrakująceStacje(a, 2) = "jest" ' tablica
+           End If
+       Next b
+       If TablicaBrakująceStacje(a, 2) = "" Then
+            TablicaBrakująceStacje(a, 2) = "brak stacji w surowych danych"
+        End If
+    Next a
+
+    a = 2
+    TablicaBrakująceStacje2(1) = "---Stacje których brakuje w raporcie---"
+    liczbaStacji = 0
+    For i = 1 To UBound(TablicaBrakująceStacje)
+        If CStr(TablicaBrakująceStacje(i, 2)) = CStr("brak stacji w surowych danych") Then
+            TablicaBrakująceStacje2(a) = TablicaBrakująceStacje(i, 1)
+            liczbaStacji = liczbaStacji + 1
+            a = a + 1
+        End If
+    Next i
+
+    ReDim Preserve TablicaBrakująceStacje2(liczbaStacji - 1)
+
+    Set Miejsce3 = Worksheets("SPRAWDZANIE").Range("BrakująceStacje", "TestKon") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+    Miejsce3.Resize(UBound(TablicaBrakująceStacje2), 1) = Application.Transpose(TablicaBrakująceStacje2) ' Resizeuje Range aby pasował do tablicy
+
+
+'------MsgBox ("Część  - zliczanie stacji per pakiet")---------------------
+oFile.WriteLine "Część  - zliczanie stacji per pakiet"
+
+    IlePakietów = (UBound(TablicaPakietów, 2) - 1) / 2 ' tablica
+    ReDim IleStacjiWPakiecie(1 To IlePakietów, 1 To 2)  ' Resizowanie tablicy do zbierania ilosc wierszy w kolumnach listy pakietów
+
+
+    z = 1
+    For i = 1 To UBound(TablicaPakietów, 2) - 1 ' petla okresla ilosc wierszy w kolumnach listach kanałów
+        If i = 1 Then
+            IleStacjiWPakiecie(i, 1) = wbBaza.Worksheets("PAKIETY").Cells(60, (i)).End(xlUp).Row - 1 '!!!!WAŻNE - zautomatyzować!! Tablica określa ostatni wiersz skacząc od wiersza 51 do góry ' tablica
+            
+        Else
+        z = i - z
+            IleStacjiWPakiecie(z, 1) = wbBaza.Worksheets("PAKIETY").Cells(60, (i)).End(xlUp).Row - 1 '!!!!WAŻNE - zautomatyzować!! Tablica określa ostatni wiersz skacząc od wiersza 51 do góry ' tablica
+            
+        End If
+        i = i + 1
+    Next i
+
+
+'------MsgBox ("Część  - Czy brakujące stacje wchodzą w skład pakietów")---------------------
+oFile.WriteLine "Część  - Czy brakujące stacje wchodzą w skład pakietów"
+
+    ReDim WybrakowanePakiety(1 To IlePakietów, 1 To 2)
+
+    z = 2
+    WybrakowanePakiety(1, 1) = "---Pakiety w skład których wchodzą brakujące stacje---"
+    For a = 1 To UBound(TablicaPakietów, 2) - 1 ' tablica
+        
+        If a = 1 Then
+            For b = 2 To IleStacjiWPakiecie(a, 1) + 1 ' tablica
+                
+                For c = 1 To UBound(TablicaBrakująceStacje2, 1) ' tablica ' tablica
+                    
+                    If TablicaPakietów(b, a) = TablicaBrakująceStacje2(c) Then ' tablica
+                        WybrakowanePakiety(a, 1) = TablicaPakietów(1, a)
+                    End If
+                Next c
+            Next b
+        Else
+            z = z + 1
+            
+            For b = 2 To IleStacjiWPakiecie(z - 1, 1) + 1 ' tablica
+
+                For c = 1 To UBound(TablicaBrakująceStacje2, 1) ' tablica ' tablica
+                    
+                    If TablicaPakietów(b, a) = TablicaBrakująceStacje2(c) Then ' tablica
+                        WybrakowanePakiety(z, 1) = TablicaPakietów(1, a)
+                    End If
+                Next c
+            Next b
+        End If
+        a = a + 1
+    Next a
+
+
+    Set Miejsce4 = Worksheets("SPRAWDZANIE").Range("WybrakowanePakiety", "TestKon2") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Inde0ksów
+    Miejsce4.Resize(UBound(WybrakowanePakiety, 1), UBound(WybrakowanePakiety, 2)) = WybrakowanePakiety ' Resizeuje Range aby pasował do tablicy
+    
+    Worksheets("SPRAWDZANIE").Range("ILESTACJIWPAKIECIEN") = "---Ile stacji w pakietach---"
+    
+    Set Miejsce5 = Worksheets("SPRAWDZANIE").Range("ILESTACJIWPAKIECIE", "F3") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Inde0ksów
+    Miejsce5.Resize(UBound(IleStacjiWPakiecie, 1), UBound(IleStacjiWPakiecie, 2)) = IleStacjiWPakiecie ' Resizeuje Range aby pasował do tablicy
+
+
+'------MsgBox ("Część  - skanowanie kanałów i przypisanie do Stacji")---------------------------
+oFile.WriteLine "Część  - skanowanie kanałów i przypisanie do Stacji"
+
+    liczbaTargetów = InputBox(Prompt:="Ile targetów", Title:="Liczba Targetów")
+
+    IleKolumnDanych = ((UBound(TablicaDanych, 2) - 2) / liczbaTargetów) * 2 ' Ile mamy miesięcy w tabeli z danymi? Wartość to liczba miesięcy + nazwa programu + nazwa brokera + który buying target per kanał
+    
+    IleWierszyDanych = UBound(TablicaDanych, 1) ' Ile mamy kanałów w tabeli z danymi? Wartość - 1
+    ReDim TablicaDanychWybranych(1 To IleWierszyDanych, 1 To IleKolumnDanych + 3) ' Tablica Indeksów zostaje dopasowana do potrzeb
+
+    For a = 1 To UBound(TablicaDanych, 1) ' tablica
+        For b = 1 To UBound(TablicaKanałów, 2) ' tablica
+            For c = 1 To IleKanałówWStacji(b) ' tablica
+                If CStr(TablicaKanałów(c, b)) = CStr(TablicaDanych(a, 1)) Then ' tablica
+                    TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2)) = TablicaKanałów(1, b) ' tablica
+                End If
+            Next c
+        Next b
+    Next a
+
+    
+
+'------MsgBox ("Część  - przypisanie BT do Stacji")---------------------------
+oFile.WriteLine "Część  - przypisanie BT do Stacji"
+
+    '1.Standardowe przypisanie
+    StandardCzyNie = InputBox(Prompt:="Makro będzie rozbudowanę o inne niż standardowa wersja zakupu. W tym momencie wpisz 1 i kliknij ok.", Title:="Który standard")
+    
+    If StandardCzyNie = 1 Then
+        If liczbaTargetów = 2 Then
+            Pozycja1649 = InputBox("Masz " & liczbaTargetów & " Targety, w tym powinny być dwa buying targety All 16-49 i All 16-59. Na której pozycji znajduje się target 16-49")
+            
+            For a = 1 To UBound(TablicaDanychWybranych, 1)
+                TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1649
+            Next a
+            
+        ElseIf liczbaTargetów = 3 Then
+                
+                Pozycja1649 = InputBox("Masz " & liczbaTargetów & " Targety, w tym powinny być dwa buying targety All 16-49 i All 16-59. Na której pozycji znajduje się target 16-49")
+                Pozycja1659 = InputBox("Na której pozycji znajduje się target 16-59")
+                
+                For a = 1 To UBound(TablicaDanychWybranych, 1)
+                    If TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2)) = "TVP" Then
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1659
+                    ElseIf TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2)) = "TVP Tematyczne" Then
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1659
+                    Else
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1649
+                    End If
+                Next a
+        End If
+        
+    ElseIf StandardCzyNie = 2 Then
+    
+        If liczbaTargetów = 2 Then
+        
+            Pozycja1649 = InputBox("Masz " & liczbaTargetów & " Targety, w tym powinny być dwa buying targety All 16-49 i All 16-59. Na której pozycji znajduje się target 16-49")
+            
+            For a = 1 To UBound(TablicaDanychWybranych, 1)
+                TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1649
+            Next a
+            
+        ElseIf liczbaTargetów = 3 Then
+                
+                Pozycja1649 = InputBox("Masz " & liczbaTargetów & " Targety, w tym powinny być dwa buying targety All 16-49 i All 16-59. Na której pozycji znajduje się target 16-49")
+                Pozycja1659 = InputBox("Na której pozycji znajduje się target 16-59")
+                
+                For a = 1 To UBound(TablicaDanychWybranych, 1)
+                    If TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2)) = "TVP" Then
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1659
+                    ElseIf TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2)) = "TVP Tematyczne" Then
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1659
+                    Else
+                        TablicaDanychWybranych(a, UBound(TablicaDanychWybranych, 2) - 1) = Pozycja1649
+                    End If
+                Next a
+        End If
+    End If
+
+'------MsgBox ("Część  - tworzenie nowej listy obliczeniowej")-----------------
+oFile.WriteLine "Część  - tworzenie nowej listy obliczeniowej"
+
+   For b = 1 To IleWierszyDanych ' tablica
+        TablicaDanychWybranych(b, 1) = TablicaDanych(b, 1) ' Wkleja nazwę programu w kolumnie pierwszej
+
+        kolumnaWklejana = 2 ' tablica
+        For a = 2 To (UBound(TablicaDanych, 2)) - 1 ' tablica
+            TG = TablicaDanych(b, a) ' tablica
+            TablicaDanychWybranych(b, kolumnaWklejana) = TG
+
+            BTPosition = (TablicaDanychWybranych(b, (UBound(TablicaDanychWybranych, 2) - 1)) - 1)
+
+            BT = TablicaDanych(b, (a + BTPosition))
+
+
+            TablicaDanychWybranych(b, kolumnaWklejana + 1) = BT
+
+            kolumnaWklejana = kolumnaWklejana + 2 ' miejsce wklejania danych do tablicy Indeksów przesówa się razem z iteracją
+            a = a + liczbaTargetów - 1 ' Dodanie 1 do a pozwala przeskakiwać iteracji co 2 miejsca - jest to niezbędne!
+        Next a
+    Next b
+    
+    Worksheets("WYNIK2").Range("A1") = "Finalnie wybrane dane / Miesiąc"
+    Worksheets("WYNIK2").Range("A2") = "Kanał / Target"
+    b = 1
+    For a = 1 To IleKolumnDanych - 1
+        
+        Worksheets("WYNIK2").Range("A1").Offset(0, a) = b
+        Worksheets("WYNIK2").Range("A1").Offset(0, a + 1) = b
+        Worksheets("WYNIK2").Range("A2").Offset(0, a) = "Target Group"
+        Worksheets("WYNIK2").Range("A2").Offset(0, a + 1) = "Buying Group"
+        b = b + 1
+        a = a + 1
+    Next a
+   
+    Set Miejsce6 = Worksheets("WYNIK2").Range("A3", "D4") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+    Miejsce6.Resize(UBound(TablicaDanychWybranych, 1), UBound(TablicaDanychWybranych, 2)) = TablicaDanychWybranych ' Resizeuje Range aby pasował do tablicy
+   
+
+'------MsgBox ("Część  - zliczanie realnych shrów w paczkach")-----------------
+oFile.WriteLine "Część  - zliczanie realnych shrów w paczkach"
+
+    '1. Który pakiet wymaga uzupełnienia
+    ReDim PakietyDoSkanowania(1 To (UBound(TablicaPakietów, 2) - 1))
+    
+    z = 1
+    Row = 0
+    For a = 1 To UBound(TablicaPakietów, 2) - 1 ' tablica
+        For b = 2 To IleStacjiWPakiecie(z, 1) + 1 ' tablica
+            If TablicaPakietów(b, a + 1) = "" Then ' tablica
+                'MsgBox (TablicaPakietów(b, a))
+                PakietyDoSkanowania(z) = TablicaPakietów(1, a)
+            End If
+        Next b
+        a = a + 1
+        z = z + 1
+    Next a
+
+    Worksheets("SPRAWDZANIE").Range("PakietyDoSkanowaniaN") = "---Które pakiety nie posiadają sztywnych SHRów---"
+    
+    Set Miejsce8 = Worksheets("SPRAWDZANIE").Range("PakietyDoSkanowania", "PakietyDoSkanowania2") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+    Miejsce8.Resize(UBound(PakietyDoSkanowania)) = Application.Transpose(PakietyDoSkanowania) ' Resizeuje Range aby pasował do tablicy
+
+    '2. Tworzy tabelę pakietów do wyliczenia
+'    For a = 1 To UBound(PakietyDoSkanowania, 1)
+    długośćPakietu = 0
+    'z = 1
+
+    For a = 1 To (UBound(PakietyDoSkanowania)) ' tablica
+        If Not PakietyDoSkanowania(a) = "" Then
+        
+        'MsgBox (długośćPakietu)
+
+            Dim TablicaSHR As Variant
+            ReDim TablicaSHR(1 To (IleStacjiWPakiecie(a, 1) + 2), 1 To (IleKolumnDanych / 2) + 2)
+            'MsgBox ("TablicaSHR ma " & UBound(TablicaSHR, 1) & " Wierszy, i " & UBound(TablicaSHR, 2) & " Kolumn.")
+            For b = 1 To (UBound(TablicaPakietów, 2) - 1)
+                If PakietyDoSkanowania(a) = TablicaPakietów(1, b) Then
+                    For c = 2 To IleStacjiWPakiecie(a, 1) + 1
+                        For D = 1 To IleWierszyDanych
+                            If TablicaDanychWybranych(D, 1) = TablicaPakietów(c, b) Then
+                                'MsgBox (TablicaPakietów(c, b))
+                                'TablicaSHR(1, f) = c - 1
+                                TablicaSHR(c, 1) = TablicaDanychWybranych(D, 1)
+                                TablicaSHR(UBound(TablicaSHR, 1), 1) = "Total"
+                                TablicaSHR(1, 1) = PakietyDoSkanowania(a)
+                                
+                                f = 2
+                                For e = 2 To (IleKolumnDanych)
+                                    TablicaSHR(1, f) = f - 1
+                                    TablicaSHR(c, f) = TablicaDanychWybranych(D, e)
+                                    TablicaSHR(UBound(TablicaSHR, 1), f) = TablicaSHR(UBound(TablicaSHR, 1), f) + TablicaDanychWybranych(D, e)
+                                    'MsgBox (TablicaDanychWybranych(d, e))
+                                    '-----------------------główna zmiana!!!-----------------
+                                    e = e + 1 ' zamieniłem 1 zamiast kodu: (liczbaTargetów - 2)
+                                    'Set Miejsce9 = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("A1").Offset(długośćPakietu, 0) ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+                                    'Miejsce9.Resize(UBound(TablicaSHR, 1), UBound(TablicaSHR, 2)) = TablicaSHR ' Resizeuje Range aby pasował do tablicy
+                                    f = f + 1
+                                Next e
+                            End If
+                        Next D
+                    Next c
+                End If
+            Next b
+            Set Miejsce9 = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("A1").Offset(długośćPakietu, 0) ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+            Miejsce9.Resize(UBound(TablicaSHR, 1), UBound(TablicaSHR, 2)) = TablicaSHR ' Resizeuje Range aby pasował do tablicy
+        '2b. Wylicza procenty
+            For g = 2 To (UBound(TablicaSHR, 2) - 1)
+                wynik = 0
+                For h = 2 To (UBound(TablicaSHR, 1) - 1)
+                    procent = TablicaSHR(h, g) / TablicaSHR(UBound(TablicaSHR, 1), g)
+                    TablicaSHR(h, g) = procent
+                    'MsgBox (TablicaSHR(h, g) & " / " & TablicaSHR(UBound(TablicaSHR, 1), g) & " = " & Procent)
+                Next h
+                Set Miejsce9 = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("A1").Offset(długośćPakietu, 0) ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+                Miejsce9.Resize(UBound(TablicaSHR, 1), UBound(TablicaSHR, 2)) = TablicaSHR ' Resizeuje Range aby pasował do tablicy
+                'MsgBox ("Wynik =" & Wynik)
+            Next g
+'                TablicaSHR(g, )
+            
+        
+        długośćPakietu = długośćPakietu + IleStacjiWPakiecie(a, 1) + 3
+        
+        End If
+        
+        
+    Next a
+    'MsgBox (długośćPakietu)
+
+        '2c. Skan stowrzonej tabeli
+    ZeskanowanePakiety = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("a1").Resize(długośćPakietu, (IleKolumnDanych / 2) + 1) ' skanowanie tablicy Kanałów per Pakiet
+    
+    
+    
+    'Set Miejsce10 = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("Q1", "T4") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+    'Miejsce10.Resize(UBound(ZeskanowanePakiety, 1), UBound(ZeskanowanePakiety, 2)) = ZeskanowanePakiety ' Resizeuje Range aby pasował do tablicy
+
+'------MsgBox ("Część  - sprawdzanie czy w pakiecie znajdują się stacje o różnych BTach")-----------------
+
+
+
+
+
+
+''------MsgBox ("Część  - wprowadzanie realnych szerów do tabeli Pakietów ")---------------------
+
+
+
+
+
+
+
+''------MsgBox ("Część  - skanowanie danych i wyliczanie indeksów do TabeliIndeksów")-----------
+oFile.WriteLine "Część  - skanowanie danych i wyliczanie indeksów do TabeliIndeksów"
+
+    ReDim TablicaIndeksów(1 To IleWierszyDanych, 1 To IleKolumnDanych + 3)
+'
+    For b = 1 To IleWierszyDanych ' tablica
+        TablicaIndeksów(b, 1) = TablicaDanychWybranych(b, 1) ' Wkleja nazwę programu w kolumnie pierwszej
+
+        kolumnaWklejana = 2 ' tablica
+        For a = 2 To (UBound(TablicaDanychWybranych, 2)) - 2 ' tablica
+            TG = TablicaDanychWybranych(b, a) ' tablica
+            'MsgBox (TG)
+            BT = TablicaDanychWybranych(b, a + 1) ' tablica
+            'MsgBox (BT)
+            
+            AffInd = TG / BT ' tablica
+
+            TablicaIndeksów(b, kolumnaWklejana) = AffInd ' tablica
+
+            kolumnaWklejana = kolumnaWklejana + 1 ' miejsce wklejania danych do tablicy Indeksów przesówa się razem z iteracją
+            a = a + 1 ' Dodanie 1 do a pozwala przeskakiwać iteracji co 2 miejsca - jest to niezbędne!
+        Next a
+    Next b
+
+    Worksheets("WYNIK3").Range("A1") = "Indeksy dla poszczególnych kanałów"
+    For a = 1 To IleKolumnDanych / 2
+        Worksheets("WYNIK3").Range("A1").Offset(0, a) = a
+    Next a
+    
+    Set Miejsce7 = Worksheets("WYNIK3").Range("A2", "D4") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+    Miejsce7.Resize(UBound(TablicaIndeksów, 1), UBound(TablicaIndeksów, 2)) = TablicaIndeksów ' Resizeuje Range aby pasował do tablicy
+
+
+''------MsgBox ("Część  - skanowanie pakietu i wyliczanie indeksu dla Pakietów")-----------------
+oFile.WriteLine "Część  - skanowanie pakietu i wyliczanie indeksu dla Pakietów"
+
+    ReDim TablicaFinał(1 To UBound(TablicaPakietów, 2), 1 To IleKolumnDanych + 1) ' tablica
+    
+    x = 2
+    For a = 1 To (UBound(TablicaPakietów, 2) - 1) ' tablica
+        TablicaFinał(1, 1) = "Wyliczane Pakiety"
+        TablicaFinał(x, 1) = TablicaPakietów(1, a) ' tablica
+        For b = 2 To (IleStacjiWPakiecie(x - 1, 1) + 1) ' tablica ' tablica
+            For c = 1 To IleWierszyDanych ' tablica
+                If TablicaPakietów(b, a) = TablicaIndeksów(c, 1) Then ' tablica
+                    'MsgBox (TablicaIndeksów(c, 1))
+                    If Not TablicaPakietów(b, a + 1) = "" Then
+                        For D = 2 To ((IleKolumnDanych / 2) + 1) ' tablica
+                            TablicaFinał(1, D) = D - 1
+                            TablicaFinał(x, D) = TablicaFinał(x, D) + (TablicaIndeksów(c, D) * TablicaPakietów(b, a + 1)) ' tablica
+                        Next D
+                    ElseIf TablicaPakietów(b, a + 1) = "" Then
+                        For t = 1 To UBound(ZeskanowanePakiety, 1)
+                            If TablicaPakietów(1, a) = ZeskanowanePakiety(t, 1) Then
+                                'MsgBox (TablicaPakietów(b, a) & " potem " & TablicaPakietów(1, a) & " i " & ZeskanowanePakiety(t, 1))
+                                PakietDoWyliczeń = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("a1").Offset(t, 0).Resize(IleStacjiWPakiecie(x - 1, 1), (IleKolumnDanych / 2) + 1) ' skanowanie tablicy Kanałów per Pakiet
+
+                                'Set Miejsce10 = Worksheets("PAKIETYDOUZUPEŁNIENIA").Range("Q1", "T4") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Indeksów
+                                'Miejsce10.Resize(UBound(PakietDoWyliczeń, 1), UBound(PakietDoWyliczeń, 2)) = PakietDoWyliczeń ' Resizeuje Range aby pasował do tablicy
+                            End If
+                        Next t
+                        For e = 2 To ((IleKolumnDanych / 2) + 1) ' tablica
+                            'MsgBox ("Liczba Kolumn w tablicy Finał = " & UBound(TablicaFinał, 2))
+                            TablicaFinał(x, e) = TablicaFinał(x, e) + (TablicaIndeksów(c, e) * PakietDoWyliczeń(b - 1, e))
+                            'MsgBox ("TablicaIndeksów" & TablicaIndeksów(c, e))
+                            'MsgBox ("PakietDoWyliczeń" & PakietDoWyliczeń(b - 1, e))
+                            'TablicaFinał(x, e) = TablicaFinał(x, e) + 1
+                        Next e
+                    End If
+                End If
+            Next c
+        Next b
+        a = a + 1
+        x = x + 1
+    Next a
+    
+
+    Set Miejsce2 = Worksheets("WYNIK").Range("A1", "D4") ' Wybiera wstępne miejsce gdzie wyrzucić tablicę Pakietów
+    Miejsce2.Resize(UBound(TablicaFinał, 1), UBound(TablicaFinał, 2)) = TablicaFinał ' Resizeuje Range aby pasował do tablicy
+''------MsgBox ("Layout")-----------------
+oFile.WriteLine "Tworzenie Layout'u"
+
+
+
+
+''------MsgBox ("Zamykanie Loga")-----------------
+wbBaza.Close
+oFile.WriteLine "Zamykanie Loga"
+
+Set fso = Nothing
+Set oFile = Nothing
+
+
+Exit Sub
+
+WriteLog:
+    
+    oFile.WriteLine Err.Number & ":" & Err.Description
+    oFile.WriteLine "Error on Line : " & Erl
+    MsgBox ("w makrze pojawił się błąd - poinformuj Łukasza")
+'    Debug.Print Err.Number & ":" & Err.Description
+    Exit Sub
+'    MsgBox ("error koniec makra")
+            
+End Sub
+Public Sub CloseIE()
+    Dim Shell As Object
+    Dim IE As Object
+ 
+    Set Shell = CreateObject("Shell.Application")
+ 
+    For Each IE In Shell.Windows
+        If TypeName(IE.Document) = "HTMLDocument" Then
+            'MsgBox IE.Name
+            IE.Quit
+        End If
+    Next
+End Sub
