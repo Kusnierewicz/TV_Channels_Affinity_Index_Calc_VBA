@@ -15,7 +15,8 @@ To be updated...
   
 # Licensing
 
-There is no license for this project yet.
+T\* See [license.txt](https://github.com/Kusnierewicz/TV_Channels_Affinity_Index_Calc_VBA/blob/master/LICENSE.txt) for usage details.
+
   
 # Contacts
 
